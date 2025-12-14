@@ -35,7 +35,7 @@ class PhysicsAnimator:
         
         print(f"Simulating {self.total_time}s of physics ({steps} steps) in {self.solver.dim}D...")
         
-        self.solver.initialize()
+        self.solver.initialize_state()
         
         for _ in range(steps):
             self.solver.step()
@@ -102,7 +102,7 @@ class PhysicsAnimator:
             
             # Layout (Scene is required for 3D)
             layout_settings = go.Layout(
-                title=f"2D {self.solver.name} Simulation (T={self.total_time}s)",
+                title=f"{self.solver.name} Simulation (T={self.total_time}s)",
                 scene=dict(
                     xaxis=dict(title='X'),
                     yaxis=dict(title='Y'),

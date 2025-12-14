@@ -25,7 +25,7 @@ class Domain2D:
         # The boundary is anywhere the mask is False OR the edge of the array
         self.is_wall = ~self.mask
         
-        # Also force edges of the domain to be walls (optional, but safe)
+        # # Also force edges of the domain to be walls (optional, but safe)
         self.is_wall[0, :] = True
         self.is_wall[-1, :] = True
         self.is_wall[:, 0] = True
