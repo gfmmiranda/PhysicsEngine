@@ -20,11 +20,11 @@ class PhysicsAnimator:
         
         # --- 1. Detect Dimension and Setup Axes ---
         # The solver logic we built uses lists for L and N (e.g., L=[1.0, 1.0])
-        if self.solver.ndim == 1:
+        if self.solver.domain.ndim == 1:
             self.x_axis = np.linspace(0, self.solver.domain.L[0], self.solver.domain.N[0])
             self.y_axis = None
         
-        elif self.solver.ndim == 2:
+        elif self.solver.domain.ndim == 2:
             self.x_axis = np.linspace(0, self.solver.domain.L[0], self.solver.domain.N[0])
             self.y_axis = np.linspace(0, self.solver.domain.L[1], self.solver.domain.N[1])
 
@@ -33,7 +33,7 @@ class PhysicsAnimator:
         t = 0.0
         steps = int(self.total_time / self.solver.dt)
         
-        print(f"Simulating {self.total_time}s of physics ({steps} steps) in {self.solver.ndim}D...")
+        print(f"Simulating {self.total_time}s of physics ({steps} steps) in {self.solver.domain.ndim}D...")
         
         self.solver.initialize_state()
         
@@ -67,7 +67,7 @@ class PhysicsAnimator:
         print('Animating.')
 
         # === 1D SETUP (Scatter) ===
-        if self.solver.ndim == 1:
+        if self.solver.domain.ndim == 1:
             # Base Trace
             initial_data = [go.Scatter(
                 x=self.x_axis, 
@@ -92,7 +92,7 @@ class PhysicsAnimator:
                 ))
 
         # === 2D SETUP (Surface) ===
-        elif self.solver.ndim == 2:
+        elif self.solver.domain.ndim == 2:
             # Base Trace
             initial_data = [go.Surface(
                 x=self.x_axis,
