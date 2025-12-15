@@ -22,8 +22,8 @@ class PDESolver:
         # Simulation time
         self.t = 0.0
         
-        # Pre-compute Neumann map if needed
-        if self.boundary_type == 'neumann':
+        # Ensure Geometry is ready, but don't apply Physics yet
+        if self.boundary_type in ['neumann', 'robin']:
             if not hasattr(self.domain, 'neumann_map'):
                 self.domain.generate_neumann_map()
 
@@ -56,17 +56,6 @@ class PDESolver:
         """
         listener.grid_idx = self.domain.physical_to_index(listener.pos)
         self.listeners.append(listener)
-    
-    def apply_boundary_conditions(self, u):
-        """Enforces Dirichlet or Neumann BCs on the given field u."""
-
-        if self.boundary_type == 'dirichlet':
-            u[~self.domain.mask] = 0.0
-
-        elif self.boundary_type == 'neumann':
-            u[~self.domain.mask] = 0.0
-            for (wall_idx, air_idx) in self.domain.neumann_map:
-                u[wall_idx] = u[air_idx]
 
     def laplacian(self, u):
         """Standard finite difference Laplacian."""
@@ -94,6 +83,21 @@ class PDESolver:
             lap[tuple(sl_curr)] += (u_next - 2 * u_curr + u_prev) / (self.domain.ds[axis] ** 2)
 
         return lap
+    
+        # def apply_boundary_conditions(self, u):
+    #     """Enforces Dirichlet or Neumann BCs on the given field u."""
+
+    #     if self.boundary_type == 'dirichlet':
+    #         u[~self.domain.mask] = 0.0
+
+    #     elif self.boundary_type == 'neumann':
+    #         u[~self.domain.mask] = 0.0
+    #         for (wall_idx, air_idx) in self.domain.neumann_map:
+    #             u[wall_idx] = u[air_idx]
+    
+    def apply_boundary_conditions(self, u):
+        """Forces child classes to define their own physics."""
+        raise NotImplementedError("Child solver must implement apply_boundary_conditions")
 
     def step(self):
         """Must be implemented by child classes."""

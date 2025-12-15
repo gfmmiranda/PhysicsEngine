@@ -50,7 +50,7 @@ class PhysicsAnimator:
         print("Simulation complete.")
 
     def create_animation(self, skip_frames=10, filename=None):
-        """Generates the interactive Plotly figure for 1D (Line) or 2D (Surface)."""
+        """Generates the interactive Plotly figure with Listener markers."""
         
         if not self.history:
             print("No data! Run .run() first.")
@@ -59,22 +59,40 @@ class PhysicsAnimator:
         # Subsample data
         display_data = self.history[::skip_frames]
         
-        # --- 2. Define Plotly Structure based on Dimension ---
+        # Check for listeners safely
+        listeners = getattr(self.solver, 'listeners', [])
+        has_listeners = len(listeners) > 0
+
+        # --- Define Plotly Structure based on Dimension ---
         frames = []
         initial_data = []
         layout_settings = {}
 
-        print('Animating.')
+        print('Animating...')
 
-        # === 1D SETUP (Scatter) ===
+        # === 1D SETUP (Line + Scatter) ===
         if self.solver.domain.ndim == 1:
-            # Base Trace
-            initial_data = [go.Scatter(
+            # 1. Base Wave Trace
+            initial_data.append(go.Scatter(
                 x=self.x_axis, 
                 y=display_data[0], 
                 mode="lines", 
+                name="Wave",
                 line=dict(color='royalblue', width=2)
-            )]
+            ))
+            
+            # 2. Listener Trace (Red X)
+            if has_listeners:
+                # Get initial X positions (fixed) and Y positions (wave amplitude)
+                l_x = [l.pos[0] for l in listeners]
+                l_y = [display_data[0][l.grid_idx] for l in listeners]
+                
+                initial_data.append(go.Scatter(
+                    x=l_x, y=l_y,
+                    mode="markers",
+                    name="Listener",
+                    marker=dict(color='red', size=12, symbol='x')
+                ))
             
             # Layout
             layout_settings = go.Layout(
@@ -86,44 +104,69 @@ class PhysicsAnimator:
 
             # Frame Generation
             for i, state in enumerate(display_data):
-                frames.append(go.Frame(
-                    data=[go.Scatter(y=state)], # Update y only
-                    name=f"f{i}"
-                ))
+                frame_data = [go.Scatter(y=state)] # Update wave
+                
+                if has_listeners:
+                    # Update listener height to ride the wave
+                    l_y_new = [state[l.grid_idx] for l in listeners]
+                    frame_data.append(go.Scatter(y=l_y_new))
+                    
+                frames.append(go.Frame(data=frame_data, name=f"f{i}"))
 
-        # === 2D SETUP (Surface) ===
+        # === 2D SETUP (Surface + 3D Scatter) ===
         elif self.solver.domain.ndim == 2:
-            # Base Trace
-            initial_data = [go.Surface(
+            # 1. Base Surface Trace
+            initial_data.append(go.Surface(
                 x=self.x_axis,
                 y=self.y_axis,
                 z=display_data[0],
                 colorscale='viridis',
-                cmin=-1.0, cmax=1.0  # Fix color range so it doesn't flicker
-            )]
+                cmin=-1.0, cmax=1.0,
+                name="Wave"
+            ))
             
-            # Layout (Scene is required for 3D)
+            # 2. Listener Trace (Red Ball)
+            if has_listeners:
+                l_x = [l.pos[0] for l in listeners]
+                l_y = [l.pos[1] for l in listeners]
+                # Extract Z height from the grid at the listener's index
+                l_z = [display_data[0][l.grid_idx] for l in listeners]
+                
+                initial_data.append(go.Scatter3d(
+                    x=l_x, y=l_y, z=l_z,
+                    mode="markers",
+                    name="Listener",
+                    marker=dict(color='red', size=5, symbol='circle')
+                ))
+
+            # Layout
             layout_settings = go.Layout(
                 title=f"{self.solver.name} Simulation (T={self.total_time}s)",
                 scene=dict(
                     xaxis=dict(title='X'),
                     yaxis=dict(title='Y'),
                     zaxis=dict(title='Amplitude', range=[-1.5, 1.5]),
-                    aspectratio=dict(x=1, y=1, z=0.7) # Adjust visual proportions
+                    aspectratio=dict(x=1, y=1, z=0.7)
                 ),
                 template="plotly_white"
             )
 
             # Frame Generation
             for i, state in enumerate(display_data):
-                frames.append(go.Frame(
-                    data=[go.Surface(z=state)], # Update z only
-                    name=f"f{i}"
-                ))
+                frame_data = [go.Surface(z=state)] # Update surface
+                
+                if has_listeners:
+                    # Update listener Z height
+                    l_z_new = [state[l.grid_idx] for l in listeners]
+                    # In 3D frames, it's safer to re-pass X and Y to ensure alignment
+                    l_x = [l.pos[0] for l in listeners]
+                    l_y = [l.pos[1] for l in listeners]
+                    
+                    frame_data.append(go.Scatter3d(x=l_x, y=l_y, z=l_z_new))
+                    
+                frames.append(go.Frame(data=frame_data, name=f"f{i}"))
 
-        # --- 3. Assemble and Return Figure ---
-        
-        # Common Animation Controls (Play/Pause)
+        # --- Assemble and Return Figure ---
         updatemenus = [dict(
             type="buttons",
             showactive=False,

@@ -25,7 +25,6 @@ class BaseDomain:
         # 4. Initialize placeholders
         self.mask = None
         self.is_wall = None
-        self.neumann_map = []
 
     def update_boundaries(self):
         """Standard N-dimensional boundary enforcer."""
