@@ -21,6 +21,11 @@ class Listener:
         self.history.append(val)
         self.times.append(t)
 
+    def reset(self):
+        """Clears recorded history to prepare for a new run."""
+        self.data = []
+        self.time = []
+
     def get_time_series(self):
         """Returns (Time, Amplitude) arrays for the Impulse Response."""
         return np.array(self.times), np.array(self.history)

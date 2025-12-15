@@ -3,7 +3,7 @@ from src.sources import HarmonicSource
 
 class PDESolver:
     """
-    Base class for 2D finite difference solvers. 
+    Base class for 1, 2 or 3D finite difference solvers. 
     Handles domain binding, boundary conditions, and spatial derivatives.
     """
     def __init__(self, domain, boundary_type='dirichlet'):
@@ -22,8 +22,8 @@ class PDESolver:
         # Simulation time
         self.t = 0.0
         
-        # Pre-compute Neumann map if needed
-        if self.boundary_type == 'neumann':
+        # Ensure Geometry is ready
+        if self.boundary_type in ['neumann', 'robin']:
             if not hasattr(self.domain, 'neumann_map'):
                 self.domain.generate_neumann_map()
 
@@ -56,17 +56,6 @@ class PDESolver:
         """
         listener.grid_idx = self.domain.physical_to_index(listener.pos)
         self.listeners.append(listener)
-    
-    def apply_boundary_conditions(self, u):
-        """Enforces Dirichlet or Neumann BCs on the given field u."""
-
-        if self.boundary_type == 'dirichlet':
-            u[~self.domain.mask] = 0.0
-
-        elif self.boundary_type == 'neumann':
-            u[~self.domain.mask] = 0.0
-            for (wall_idx, air_idx) in self.domain.neumann_map:
-                u[wall_idx] = u[air_idx]
 
     def laplacian(self, u):
         """Standard finite difference Laplacian."""
@@ -94,6 +83,29 @@ class PDESolver:
             lap[tuple(sl_curr)] += (u_next - 2 * u_curr + u_prev) / (self.domain.ds[axis] ** 2)
 
         return lap
+    
+    def reset(self):
+        """
+        Resets the simulation to t=0, clears listeners, and restores initial conditions.
+        Preserves: Domain, Sources, Listeners, and Boundary physics.
+        """
+        self.t = 0.0
+        
+        # 1. Clear Listener History
+        for listener in self.listeners:
+            if hasattr(listener, 'reset'):
+                listener.reset()
+        
+        # 2. Re-calculate Initial Fields (Polymorphic call to child class)
+        # This uses the saved self.phi / self.psi functions in Wave/Heat
+        self.initialize_state()
+        
+        print(f"Solver reset to t=0.0s. Ready to run.")
+
+        
+    def apply_boundary_conditions(self, u):
+        """Forces child classes to define their own physics."""
+        raise NotImplementedError("Child solver must implement apply_boundary_conditions")
 
     def step(self):
         """Must be implemented by child classes."""

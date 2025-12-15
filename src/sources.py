@@ -19,3 +19,16 @@ class HarmonicSource:
         """Returns the signal strength at time t."""
         omega = 2 * np.pi * self.frequency
         return self.amplitude * np.sin(omega * t + self.phase)
+    
+class RickerSource:
+    def __init__(self, pos, peak_freq, delay, amplitude=1.0):
+        self.pos = np.atleast_1d(np.array(pos, dtype=float))
+        self.grid_idx = None # Set by solver
+        self.fp = peak_freq
+        self.dr = delay
+        self.amp = amplitude
+
+    def value(self, t):
+        # The "Mexican Hat" wavelet
+        tau = np.pi * self.fp * (t - self.dr)
+        return self.amp * (1 - 2 * tau**2) * np.exp(-tau**2)

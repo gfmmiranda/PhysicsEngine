@@ -9,8 +9,14 @@ class Wave(PDESolver):
             initial_ut, 
             dt=None, 
             c=1.0, 
-            boundary_type='dirichlet'
+            boundary_type='dirichlet',
+            alpha=0.0
             ):
+        
+        # If user sets alpha > 0 and boundary_type is dirichlet, override to robin
+        if alpha > 0.0 and boundary_type == 'dirichlet':
+            print("Alpha > 0 with Dirichlet BCs detected. Switching to Robin BCs for absorption.")
+            boundary_type = 'robin'
         
         # Pass generic args to parent
         super().__init__(domain, boundary_type)
@@ -20,13 +26,44 @@ class Wave(PDESolver):
         self.c = c
         self.phi = initial_u
         self.psi = initial_ut
+        self.alpha = alpha
         
         # CFL Condition: dt <= dx / (c * sqrt(2))
         inv_sq_sum = np.sum(1.0 / self.domain.ds**2)
         cfl_limit = 1.0 / (c * np.sqrt(inv_sq_sum))
         self.dt = 0.99 * cfl_limit if dt is None or dt >= cfl_limit else dt
+
+        # Boundary Conditions Initialization
+        self.boundary_physics_map = []
         
+        if self.boundary_type in ['neumann', 'robin']:
+            self._compile_boundary_physics()
+
         self.initialize_state()
+
+    def _compile_boundary_physics(self):
+        """
+        Iterates over the Domain's geometry map and pre-calculates 
+        the Robin 'beta' term for every single boundary point.
+        """
+
+        count = 0
+        for (wall_idx, air_idx) in self.domain.neumann_map:
+            # A. Detect Normal Axis (to handle anisotropic dx)
+            axis = 0
+            for dim in range(self.domain.ndim):
+                if wall_idx[dim] != air_idx[dim]:
+                    axis = dim
+                    break
+            
+            # B. Get spacing normal to this specific wall
+            dn = self.domain.ds[axis]
+            
+            # C. Calculate Physics Coefficient (Beta)
+            beta = (self.alpha * dn) / (2 * self.dt)
+            count += 1
+            
+            self.boundary_physics_map.append((wall_idx, air_idx, beta))
 
     def initialize_state(self):
         """Initialize u_prev and u_curr based on initial conditions."""
@@ -35,6 +72,23 @@ class Wave(PDESolver):
 
         self.apply_boundary_conditions(self.u_prev)
         self.apply_boundary_conditions(self.u_curr)
+
+    def apply_boundary_conditions(self, u):
+        # 1. Dirichlet (Mask defaults to 0)
+        u[~self.domain.mask] = 0.0
+
+        # 2. Advanced Conditions (Neumann / Robin)
+        # We use our pre-compiled list. No if-checks inside the loop.
+        for (wall_idx, air_idx, beta) in self.boundary_physics_map:
+            
+            val_air = u[air_idx]
+            if beta == 0:
+                # Optimized Neumann (Hard Wall): u_wall = u_air
+                u[wall_idx] = val_air
+            else:
+                # Robin (Absorbing): Uses history (u_prev)
+                val_prev = self.u_prev[wall_idx]
+                u[wall_idx] = (val_air + beta * val_prev) / (1 + beta)
 
     def step(self):
         # 1. Compute Physics
@@ -88,6 +142,16 @@ class Heat(PDESolver):
     def initialize_state(self):
         self.u_curr = self.phi(*self.domain.grids)
         self.apply_boundary_conditions(self.u_curr)
+
+    def apply_boundary_conditions(self, u):
+        # 1. Dirichlet (Fixed Temperature walls = 0)
+        u[~self.domain.mask] = 0.0
+
+        # 2. Neumann (Insulated walls)
+        # Heat equation Neumann is simple: Slope = 0 -> u_wall = u_air
+        if self.boundary_type == 'neumann':
+            for (wall_idx, air_idx) in self.domain.neumann_map:
+                u[wall_idx] = u[air_idx]
 
     def step(self):
         # 1. Compute Physics
