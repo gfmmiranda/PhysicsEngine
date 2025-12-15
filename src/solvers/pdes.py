@@ -1,5 +1,5 @@
 import numpy as np
-from src.pdesolver import PDESolver
+from src.core import PDESolver
 
 class Wave(PDESolver):
     def __init__(

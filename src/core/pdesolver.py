@@ -1,5 +1,5 @@
 import numpy as np
-from src.sources import HarmonicSource
+from src.components import HarmonicSource
 
 class PDESolver:
     """
@@ -102,7 +102,6 @@ class PDESolver:
         
         print(f"Solver reset to t=0.0s. Ready to run.")
 
-        
     def apply_boundary_conditions(self, u):
         """Forces child classes to define their own physics."""
         raise NotImplementedError("Child solver must implement apply_boundary_conditions")

@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import find_peaks
 
 def get_normal_mode_dirichlet(n, m, Lx, Ly):
     """
@@ -42,3 +43,29 @@ def get_initial_gaussian(pos, sigma):
         return np.exp(-dist_sq / (2 * sigma**2))
 
     return displacement
+
+def find_first_arrival(signal, threshold_ratio=0.1):
+    """
+    Finds the index of the first significant peak (Direct Sound).
+    
+    Args:
+        signal (array): The audio signal (pressure).
+        threshold_ratio (float): Sensitivity (0.1 means peak must be 10% of max).
+    
+    Returns:
+        int: Index of the first arrival.
+    """
+    
+    # 2. Define a height threshold relative to the global max
+    #    (This filters out silence/sensor noise)
+    max_val = np.max(signal)
+    min_height = max_val * threshold_ratio
+    
+    # 3. Find all peaks that are at least this tall
+    #    'distance' ensures we don't pick jittery noise on the same wave
+    peaks, _ = find_peaks(signal, height=min_height, distance=5)
+    
+    if len(peaks) > 0:
+        return peaks[0]  # <--- The first one is the Direct Sound!
+    else:
+        return np.argmax(signal) # Fallback if signal is too weak
