@@ -1,11 +1,11 @@
 import numpy as np
-from src.base_solver import PhysicsSolver
+from src.pdesolver import PDESolver
 
-class Wave2D(PhysicsSolver):
+class Wave(PDESolver):
     def __init__(self, domain, initial_u, initial_ut, dt=None, c=1.0, boundary_type='dirichlet'):
         # Pass generic args to parent
         super().__init__(domain, boundary_type)
-        self.name = 'Wave2D' 
+        self.name = 'Wave' 
         
         # Wave specific arguments
         self.c = c
@@ -13,14 +13,15 @@ class Wave2D(PhysicsSolver):
         self.psi = initial_ut
         
         # CFL Condition: dt <= dx / (c * sqrt(2))
-        stability_limit = (domain.dx / (c * np.sqrt(2)))
-        self.dt = 0.99 * stability_limit if dt is None or dt >= stability_limit else dt
+        inv_sq_sum = np.sum(1.0 / self.domain.ds**2)
+        cfl_limit = 1.0 / (c * np.sqrt(inv_sq_sum))
+        self.dt = 0.99 * cfl_limit if dt is None or dt >= cfl_limit else dt
         
         self.initialize_state()
 
     def initialize_state(self):
-        self.u_prev = self.phi(self.domain.X, self.domain.Y)
-        self.u_curr = self.u_prev + self.dt * self.psi(self.domain.X, self.domain.Y)
+        self.u_prev = self.phi(*self.domain.grids)
+        self.u_curr = self.u_prev + self.dt * self.psi(*self.domain.grids)
 
         self.apply_boundary_conditions(self.u_prev)
         self.apply_boundary_conditions(self.u_curr)
@@ -38,24 +39,31 @@ class Wave2D(PhysicsSolver):
         self.u_prev, self.u_curr = self.u_curr, u_next
 
 
-class Heat2D(PhysicsSolver):
+class Heat(PDESolver):
     def __init__(self, domain, initial_u, dt=None, k=1.0, boundary_type='dirichlet'):
         # Pass generic args to parent
         super().__init__(domain, boundary_type)
-        self.name = 'Heat2D'
+        self.name = 'Heat'
         
         # Diffusion specific arguments
         self.k = k
         self.phi = initial_u
         
-        # Stability: dt <= dx^2 / 4k
-        stability_limit = (domain.dx ** 2) / (4 * k)
+        # --- N-Dimensional Stability Condition ---
+        # 1. Calculate Sum of Inverse Squares
+        inv_sq_sum = np.sum(1.0 / self.domain.ds**2)
+        
+        # 2. Calculate limit: 1 / (2 * k * Sum)
+        # Note: In 2D isotropic, Sum = 2/dx^2, so this becomes dx^2 / 4k
+        stability_limit = 1.0 / (2 * k * inv_sq_sum)
+        
+        # 3. Apply safety factor
         self.dt = 0.99 * stability_limit if dt is None or dt >= stability_limit else dt
         
         self.initialize_state()
     
     def initialize_state(self):
-        self.u_curr = self.phi(self.domain.X, self.domain.Y)
+        self.u_curr = self.phi(*self.domain.grids)
         self.apply_boundary_conditions(self.u_curr)
 
     def step(self):

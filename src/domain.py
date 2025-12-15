@@ -1,74 +1,137 @@
 import numpy as np
 
-class Domain2D:
-    """Defines a 2D rectangular domain with walls and obstacles."""
+class BaseDomain:
+    """
+    Standardized parent class.
+    Internally, everything is a NumPy array of shape (ndim,).
+    """
     def __init__(self, length, dx):
-        self.L = length
-        self.dx = dx
-        self.dy = dx
+        # 1. Standardize 'length' to a generic numpy array
+        self.L = np.atleast_1d(np.array(length, dtype=float))
+        self.dim = self.L.size
         
-        # 1. Create the base grid
-        self.N = [int(self.L[0] / dx) + 1, int(self.L[1] / dx) + 1]
-        self.x = np.linspace(0, self.L[0], self.N[0])
-        self.y = np.linspace(0, self.L[1], self.N[1])
-        self.X, self.Y = np.meshgrid(self.x, self.y)
+        # 2. Standardize 'dx' (grid spacing)
+        # If user passes single float, assume isotropic (same dx for x, y, z)
+        dx_input = np.atleast_1d(np.array(dx, dtype=float))
+        if dx_input.size == 1:
+            self.ds = np.repeat(dx_input, self.dim) # e.g. [0.1, 0.1]
+        else:
+            self.ds = dx_input # Anisotropic grid e.g. [0.1, 0.5]
+            
+        # 3. Calculate 'N' (Number of points) automatically
+        # Vectorized calculation: Works for 1D, 2D, 3D instantly
+        self.N = (np.floor(self.L / self.ds) + 1).astype(int)
         
-        # 2. The Mask: True = Active Medium, False = Wall
-        # Initialize as all active (empty rectangular room)
-        self.mask = np.ones_like(self.X, dtype=bool)
-
-        # 3. Boundary Indices (Optimization for the solver)
-        self.update_boundaries()
+        # 4. Initialize placeholders
+        self.mask = None
+        self.is_wall = None
+        self.neumann_map = []
 
     def update_boundaries(self):
-        """Pre-calculates where the walls are for fast enforcement."""
-        # The boundary is anywhere the mask is False OR the edge of the array
+        """Standard N-Dimensional boundary enforcer."""
+        if self.mask is None: return
+
         self.is_wall = ~self.mask
         
-        # # Also force edges of the domain to be walls (optional, but safe)
-        self.is_wall[0, :] = True
-        self.is_wall[-1, :] = True
-        self.is_wall[:, 0] = True
-        self.is_wall[:, -1] = True
+        # Dynamic slicing to force edges to be walls
+        # This loop works for any number of dimensions
+        for axis in range(self.dim):
+            # Create a slice object that selects "Everything"
+            sl_start = [slice(None)] * self.dim
+            sl_end = [slice(None)] * self.dim
+            
+            # Target the first and last index of the current axis
+            sl_start[axis] = 0
+            sl_end[axis] = -1
+            
+            self.is_wall[tuple(sl_start)] = True
+            self.is_wall[tuple(sl_end)] = True
         
-        # Sync mask with walls
         self.mask = ~self.is_wall
 
-    def add_rectangular_obstacle(self, pos, length):
-        """Carves a rectangle out of the active domain (makes it a wall)."""
-        obstacle = (self.X >= pos[0]) & (self.X <= pos[0] + length[0]) & \
-                   (self.Y >= pos[1]) & (self.Y <= pos[1] + length[1])
-        self.mask[obstacle] = False
+    def generate_neumann_map(self):
+        """Standard N-Dimensional Neumann map generator."""
+        self.neumann_map = []
+        
+        # np.where returns a tuple of arrays, one per dimension
+        wall_coords = np.where(self.is_wall)
+        # Zip into coordinate tuples: (x,y) or (x,y,z)
+        wall_points = list(zip(*wall_coords))
+
+        for point in wall_points:
+            neighbor = self._find_air_neighbor(point)
+            if neighbor:
+                self.neumann_map.append((point, neighbor))
+
+    def _find_air_neighbor(self, point):
+        """Scans adjacent cells in all N dimensions."""
+        for axis in range(self.dim):
+            for direction in [-1, 1]:
+                # Copy coordinate and shift
+                probe = list(point)
+                probe[axis] += direction
+                probe = tuple(probe)
+                
+                # Check Bounds
+                if 0 <= probe[axis] < self.N[axis]:
+                    # Check if Air
+                    if self.mask[probe]:
+                        return probe
+        return None
+
+class Domain1D(BaseDomain):
+    """Specific implementation for 1D lines."""
+    def __init__(self, length, dx):
+        # Pass inputs up; BaseDomain converts them to arrays [L], [dx]
+        super().__init__(length, dx)
+        
+        # Create 1D Grid
+        self.x = np.linspace(0, self.L[0], self.N[0])
+        self.grids = (self.x,)
+        
+        # Create Mask (1D array)
+        self.mask = np.ones(self.N[0], dtype=bool)
+        self.update_boundaries()
+
+class Domain2D(BaseDomain):
+    def __init__(self, length, dx):
+        # Length can be [10, 20] or just 10 (square)
+        if np.ndim(length) == 0: length = [length, length]
+        super().__init__(length, dx)
+        
+        # Create 2D Grid
+        self.x = np.linspace(0, self.L[0], self.N[0])
+        self.y = np.linspace(0, self.L[1], self.N[1])
+        # indexing='ij' is crucial for matrix notation (row, col) -> (x, y)
+        self.X, self.Y = np.meshgrid(self.x, self.y, indexing='ij')
+        self.grids = (self.X, self.Y)
+        
+        # Create Mask (2D array)
+        self.mask = np.ones(tuple(self.N), dtype=bool)
+        self.update_boundaries()
+
+    def add_rectangular_obstacle(self, pos, size):
+        """
+        pos: [x, y] center or bottom-left
+        size: [width, height]
+        """
+        # Vectorized check
+        x_cond = (self.X >= pos[0]) & (self.X <= pos[0] + size[0])
+        y_cond = (self.Y >= pos[1]) & (self.Y <= pos[1] + size[1])
+        
+        self.mask[x_cond & y_cond] = False
         self.update_boundaries()
 
     def add_circular_cavity(self, pos, radius):
-        """Creates a circular wall cavity in the domain."""
+        """
+        Masks everything OUTSIDE the circle (creates a circular domain).
+        """
         dist_sq = (self.X - pos[0])**2 + (self.Y - pos[1])**2
-        cavity = (dist_sq <= radius**2)
-        self.mask[~cavity] = False
+        
+        # 1. Identify points OUTSIDE the circle
+        is_outside = (dist_sq > radius**2)
+        
+        # 2. Set outside points to False (Wall)
+        self.mask[is_outside] = False
+        
         self.update_boundaries()
-
-    def generate_neumann_map(self):
-        """Generates a map for Neumann boundary conditions."""
-        self.neumann_map = []
-        wall_x, wall_y = np.where(self.is_wall)
-
-        # For each wall cell, find a neighboring 'Air' cell to copy from
-        for x, y in zip(wall_x, wall_y):
-            # Check air neighbors
-            neighbors = [
-                (x+1, y), (x-1, y), (x, y+1), (x, y-1)
-            ]
-
-            valid_sources = []
-            for nx, ny in neighbors:
-                # Ensure neighbor is inside grid bounds
-                if 0 <= nx < self.N[0] and 0 <= ny < self.N[1]:
-                    if self.mask[nx, ny]: # If neighbor is Air
-                        valid_sources.append((nx, ny))
-
-            # If we found valid air neighbors, pick one (average or single)
-            # For simplicity, we just pick the first one found.
-            if valid_sources:
-                target_y, target_x = valid_sources[0]
-                self.neumann_map.append( ((x,y), (target_x, target_y)) )
