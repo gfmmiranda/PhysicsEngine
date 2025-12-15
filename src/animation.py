@@ -35,8 +35,6 @@ class PhysicsAnimator:
         
         print(f"Simulating {self.total_time}s of physics ({steps} steps) in {self.solver.domain.ndim}D...")
         
-        self.solver.initialize_state()
-        
         for _ in range(steps):
             self.solver.step()
             
@@ -50,7 +48,7 @@ class PhysicsAnimator:
         print("Simulation complete.")
 
     def create_animation(self, skip_frames=10, filename=None):
-        """Generates the interactive Plotly figure with Listener markers."""
+        """Generates the interactive Plotly figure with dynamic Z-scaling."""
         
         if not self.history:
             print("No data! Run .run() first.")
@@ -59,119 +57,108 @@ class PhysicsAnimator:
         # Subsample data
         display_data = self.history[::skip_frames]
         
+        # --- NEW: Calculate Dynamic Limits ---
+        # We stack the frames to find the global min/max across the entire animation
+        # Use nanmin/nanmax to ignore the NaNs you set for the boundaries/mask
+        stack = np.array(display_data)
+        global_min = np.nanmin(stack)
+        global_max = np.nanmax(stack)
+        
+        # Safety fallback: If simulation is pure silence (all zeros), set dummy limits
+        if global_max == global_min:
+            global_max += 1.0
+            global_min -= 1.0
+            print("Warning: Simulation appears to be flat (min == max).")
+        else:
+            print(f"Dynamic Scale Found: [{global_min:.2e}, {global_max:.2e}]")
+
+        # Add 10% padding so the wave peaks don't touch the top/bottom of the box
+        padding = (global_max - global_min) * 0.1
+        z_limits = [global_min - padding, global_max + padding]
+        # -------------------------------------
+
         # Check for listeners safely
         listeners = getattr(self.solver, 'listeners', [])
         has_listeners = len(listeners) > 0
 
-        # --- Define Plotly Structure based on Dimension ---
         frames = []
         initial_data = []
         layout_settings = {}
 
         print('Animating...')
 
-        # === 1D SETUP (Line + Scatter) ===
+        # === 1D SETUP ===
         if self.solver.domain.ndim == 1:
-            # 1. Base Wave Trace
             initial_data.append(go.Scatter(
-                x=self.x_axis, 
-                y=display_data[0], 
-                mode="lines", 
-                name="Wave",
+                x=self.x_axis, y=display_data[0], mode="lines", name="Wave",
                 line=dict(color='royalblue', width=2)
             ))
             
-            # 2. Listener Trace (Red X)
             if has_listeners:
-                # Get initial X positions (fixed) and Y positions (wave amplitude)
                 l_x = [l.pos[0] for l in listeners]
                 l_y = [display_data[0][l.grid_idx] for l in listeners]
-                
                 initial_data.append(go.Scatter(
-                    x=l_x, y=l_y,
-                    mode="markers",
-                    name="Listener",
+                    x=l_x, y=l_y, mode="markers", name="Listener",
                     marker=dict(color='red', size=12, symbol='x')
                 ))
             
-            # Layout
             layout_settings = go.Layout(
-                title=f"1D {self.solver.name} Simulation (T={self.total_time}s)",
-                xaxis=dict(title="Position x (m)", range=[0, self.solver.domain.L[0]]),
-                yaxis=dict(title="Amplitude", range=[-1.5, 1.5]),
+                title=f"1D Simulation (Range: {global_min:.2e} to {global_max:.2e})",
+                xaxis=dict(title="Position (m)", range=[0, self.solver.domain.L[0]]),
+                yaxis=dict(title="Amplitude", range=z_limits), # <--- Dynamic Range applied
                 template="plotly_white"
             )
 
-            # Frame Generation
             for i, state in enumerate(display_data):
-                frame_data = [go.Scatter(y=state)] # Update wave
-                
+                frame_data = [go.Scatter(y=state)]
                 if has_listeners:
-                    # Update listener height to ride the wave
                     l_y_new = [state[l.grid_idx] for l in listeners]
                     frame_data.append(go.Scatter(y=l_y_new))
-                    
                 frames.append(go.Frame(data=frame_data, name=f"f{i}"))
 
-        # === 2D SETUP (Surface + 3D Scatter) ===
+        # === 2D SETUP ===
         elif self.solver.domain.ndim == 2:
-            # 1. Base Surface Trace
             initial_data.append(go.Surface(
-                x=self.x_axis,
-                y=self.y_axis,
-                z=display_data[0],
+                x=self.x_axis, y=self.y_axis, z=display_data[0],
                 colorscale='viridis',
-                cmin=-1.0, cmax=1.0,
+                cmin=global_min, cmax=global_max, # <--- Dynamic Color Scale
                 name="Wave"
             ))
             
-            # 2. Listener Trace (Red Ball)
             if has_listeners:
                 l_x = [l.pos[0] for l in listeners]
                 l_y = [l.pos[1] for l in listeners]
-                # Extract Z height from the grid at the listener's index
                 l_z = [display_data[0][l.grid_idx] for l in listeners]
                 
                 initial_data.append(go.Scatter3d(
-                    x=l_x, y=l_y, z=l_z,
-                    mode="markers",
-                    name="Listener",
+                    x=l_x, y=l_y, z=l_z, mode="markers", name="Listener",
                     marker=dict(color='red', size=5, symbol='circle')
                 ))
 
-            # Layout
             layout_settings = go.Layout(
-                title=f"{self.solver.name} Simulation (T={self.total_time}s)",
+                title=f"2D Simulation (Range: {global_min:.2e} to {global_max:.2e})",
                 scene=dict(
                     xaxis=dict(title='X'),
                     yaxis=dict(title='Y'),
-                    zaxis=dict(title='Amplitude', range=[-1.5, 1.5]),
+                    zaxis=dict(title='Amplitude', range=z_limits), # <--- Dynamic Z-Axis
                     aspectratio=dict(x=1, y=1, z=0.7)
                 ),
                 template="plotly_white"
             )
 
-            # Frame Generation
             for i, state in enumerate(display_data):
-                frame_data = [go.Surface(z=state)] # Update surface
-                
+                frame_data = [go.Surface(z=state)]
                 if has_listeners:
-                    # Update listener Z height
                     l_z_new = [state[l.grid_idx] for l in listeners]
-                    # In 3D frames, it's safer to re-pass X and Y to ensure alignment
                     l_x = [l.pos[0] for l in listeners]
                     l_y = [l.pos[1] for l in listeners]
-                    
                     frame_data.append(go.Scatter3d(x=l_x, y=l_y, z=l_z_new))
-                    
                 frames.append(go.Frame(data=frame_data, name=f"f{i}"))
 
-        # --- Assemble and Return Figure ---
+        # --- Final Assembly ---
         updatemenus = [dict(
-            type="buttons",
-            showactive=False,
-            x=0.1, y=0, xanchor="right", yanchor="top",
-            pad=dict(t=0, r=10),
+            type="buttons", showactive=False,
+            x=0.1, y=0, xanchor="right", yanchor="top", pad=dict(t=0, r=10),
             buttons=[
                 dict(label="▶ Play", method="animate",
                      args=[None, dict(frame=dict(duration=20, redraw=True), fromcurrent=True)]),
@@ -181,7 +168,6 @@ class PhysicsAnimator:
         )]
 
         layout_settings.updatemenus = updatemenus
-        
         fig = go.Figure(data=initial_data, layout=layout_settings)
         fig.frames = frames
 
