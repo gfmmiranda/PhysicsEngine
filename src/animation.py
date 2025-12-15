@@ -20,11 +20,11 @@ class PhysicsAnimator:
         
         # --- 1. Detect Dimension and Setup Axes ---
         # The solver logic we built uses lists for L and N (e.g., L=[1.0, 1.0])
-        if self.solver.dim == 1:
-            self.x_axis = np.linspace(0, self.solver.L, self.solver.N)
+        if self.solver.ndim == 1:
+            self.x_axis = np.linspace(0, self.solver.domain.L[0], self.solver.domain.N[0])
             self.y_axis = None
         
-        elif self.solver.dim == 2:
+        elif self.solver.ndim == 2:
             self.x_axis = np.linspace(0, self.solver.domain.L[0], self.solver.domain.N[0])
             self.y_axis = np.linspace(0, self.solver.domain.L[1], self.solver.domain.N[1])
 
@@ -33,15 +33,17 @@ class PhysicsAnimator:
         t = 0.0
         steps = int(self.total_time / self.solver.dt)
         
-        print(f"Simulating {self.total_time}s of physics ({steps} steps) in {self.solver.dim}D...")
+        print(f"Simulating {self.total_time}s of physics ({steps} steps) in {self.solver.ndim}D...")
         
-        self.solver.initialize()
+        self.solver.initialize_state()
         
         for _ in range(steps):
             self.solver.step()
             
             # Store copy (Works for both 1D arrays and 2D matrices)
-            self.history.append(self.solver.u_curr.copy())
+            u_curr = self.solver.u_curr.copy()
+            u_curr[~self.solver.domain.mask] = np.nan
+            self.history.append(u_curr)
             self.time_steps.append(t)
             t += self.solver.dt
             
@@ -65,7 +67,7 @@ class PhysicsAnimator:
         print('Animating.')
 
         # === 1D SETUP (Scatter) ===
-        if self.solver.dim == 1:
+        if self.solver.ndim == 1:
             # Base Trace
             initial_data = [go.Scatter(
                 x=self.x_axis, 
@@ -77,7 +79,7 @@ class PhysicsAnimator:
             # Layout
             layout_settings = go.Layout(
                 title=f"1D {self.solver.name} Simulation (T={self.total_time}s)",
-                xaxis=dict(title="Position x (m)", range=[0, self.solver.L]),
+                xaxis=dict(title="Position x (m)", range=[0, self.solver.domain.L[0]]),
                 yaxis=dict(title="Amplitude", range=[-1.5, 1.5]),
                 template="plotly_white"
             )
@@ -90,7 +92,7 @@ class PhysicsAnimator:
                 ))
 
         # === 2D SETUP (Surface) ===
-        elif self.solver.dim == 2:
+        elif self.solver.ndim == 2:
             # Base Trace
             initial_data = [go.Surface(
                 x=self.x_axis,
@@ -102,7 +104,7 @@ class PhysicsAnimator:
             
             # Layout (Scene is required for 3D)
             layout_settings = go.Layout(
-                title=f"2D {self.solver.name} Simulation (T={self.total_time}s)",
+                title=f"{self.solver.name} Simulation (T={self.total_time}s)",
                 scene=dict(
                     xaxis=dict(title='X'),
                     yaxis=dict(title='Y'),
