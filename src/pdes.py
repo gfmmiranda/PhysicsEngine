@@ -2,7 +2,16 @@ import numpy as np
 from src.pdesolver import PDESolver
 
 class Wave(PDESolver):
-    def __init__(self, domain, initial_u, initial_ut, dt=None, c=1.0, boundary_type='dirichlet'):
+    def __init__(
+            self, 
+            domain, 
+            initial_u, 
+            initial_ut, 
+            dt=None, 
+            c=1.0, 
+            boundary_type='dirichlet'
+            ):
+        
         # Pass generic args to parent
         super().__init__(domain, boundary_type)
         self.name = 'Wave' 
@@ -20,6 +29,7 @@ class Wave(PDESolver):
         self.initialize_state()
 
     def initialize_state(self):
+        """Initialize u_prev and u_curr based on initial conditions."""
         self.u_prev = self.phi(*self.domain.grids)
         self.u_curr = self.u_prev + self.dt * self.psi(*self.domain.grids)
 
@@ -30,17 +40,30 @@ class Wave(PDESolver):
         # 1. Compute Physics
         lap = self.laplacian(self.u_curr)
         u_next = (2 * self.u_curr - self.u_prev + 
-                  (self.c * self.dt)**2 * lap)
+                    (self.c * self.dt)**2 * (lap + self.active_source_field()))
 
         # 2. Enforce Boundaries
         self.apply_boundary_conditions(u_next)
 
         # 3. Update State
         self.u_prev, self.u_curr = self.u_curr, u_next
+        self.t += self.dt
+
+        # 4. Record Data
+        for listener in self.listeners:
+            listener.record(self.t, self.u_curr)
 
 
 class Heat(PDESolver):
-    def __init__(self, domain, initial_u, dt=None, k=1.0, boundary_type='dirichlet'):
+    def __init__(
+            self, 
+            domain, 
+            initial_u, 
+            dt=None, 
+            k=1.0, 
+            boundary_type='dirichlet'
+            ):
+        
         # Pass generic args to parent
         super().__init__(domain, boundary_type)
         self.name = 'Heat'
@@ -69,7 +92,7 @@ class Heat(PDESolver):
     def step(self):
         # 1. Compute Physics
         lap = self.laplacian(self.u_curr)
-        u_next = self.u_curr + self.k * self.dt * lap
+        u_next = self.u_curr + self.dt * (self.k * lap + self.active_source_field())
 
         # 2. Enforce Boundaries
         self.apply_boundary_conditions(u_next)

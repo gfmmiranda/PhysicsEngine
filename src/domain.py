@@ -8,13 +8,13 @@ class BaseDomain:
     def __init__(self, length, dx):
         # 1. Standardize 'length' to a generic numpy array
         self.L = np.atleast_1d(np.array(length, dtype=float))
-        self.dim = self.L.size
+        self.ndim = self.L.size
         
         # 2. Standardize 'dx' (grid spacing)
         # If user passes single float, assume isotropic (same dx for x, y, z)
         dx_input = np.atleast_1d(np.array(dx, dtype=float))
         if dx_input.size == 1:
-            self.ds = np.repeat(dx_input, self.dim) # e.g. [0.1, 0.1]
+            self.ds = np.repeat(dx_input, self.ndim) # e.g. [0.1, 0.1]
         else:
             self.ds = dx_input # Anisotropic grid e.g. [0.1, 0.5]
             
@@ -28,17 +28,17 @@ class BaseDomain:
         self.neumann_map = []
 
     def update_boundaries(self):
-        """Standard N-Dimensional boundary enforcer."""
+        """Standard N-dimensional boundary enforcer."""
         if self.mask is None: return
 
         self.is_wall = ~self.mask
         
         # Dynamic slicing to force edges to be walls
         # This loop works for any number of dimensions
-        for axis in range(self.dim):
+        for axis in range(self.ndim):
             # Create a slice object that selects "Everything"
-            sl_start = [slice(None)] * self.dim
-            sl_end = [slice(None)] * self.dim
+            sl_start = [slice(None)] * self.ndim
+            sl_end = [slice(None)] * self.ndim
             
             # Target the first and last index of the current axis
             sl_start[axis] = 0
@@ -50,7 +50,7 @@ class BaseDomain:
         self.mask = ~self.is_wall
 
     def generate_neumann_map(self):
-        """Standard N-Dimensional Neumann map generator."""
+        """Standard N-dimensional Neumann map generator."""
         self.neumann_map = []
         
         # np.where returns a tuple of arrays, one per dimension
@@ -65,7 +65,7 @@ class BaseDomain:
 
     def _find_air_neighbor(self, point):
         """Scans adjacent cells in all N dimensions."""
-        for axis in range(self.dim):
+        for axis in range(self.ndim):
             for direction in [-1, 1]:
                 # Copy coordinate and shift
                 probe = list(point)
@@ -78,6 +78,24 @@ class BaseDomain:
                     if self.mask[probe]:
                         return probe
         return None
+    
+    def physical_to_index(self, pos):
+        """
+        Converts physical coordinates (e.g., [2.5, 3.0]) 
+        to grid indices (e.g., (25, 30)).
+        """
+        pos = np.atleast_1d(pos)
+        indices = []
+        
+        for i, p in enumerate(pos):
+            # Calculate index: p / dx
+            idx = int(round(p / self.ds[i]))
+            
+            # Clamp to safe bounds [0, N-1]
+            idx = max(0, min(idx, self.N[i] - 1))
+            indices.append(idx)
+            
+        return tuple(indices)
 
 class Domain1D(BaseDomain):
     """Specific implementation for 1D lines."""
