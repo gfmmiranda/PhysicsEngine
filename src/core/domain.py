@@ -133,8 +133,8 @@ class Domain2D(BaseDomain):
         size: [width, height]
         """
         # Vectorized check
-        x_cond = (self.X >= pos[0]) & (self.X <= pos[0] + size[0])
-        y_cond = (self.Y >= pos[1]) & (self.Y <= pos[1] + size[1])
+        x_cond = (self.X >= pos[0] - size[0]/2) & (self.X <= pos[0] + size[0]/2)
+        y_cond = (self.Y >= pos[1] - size[1]/2) & (self.Y <= pos[1] + size[1]/2)
         
         self.mask[x_cond & y_cond] = False
         self.update_boundaries()
