@@ -39,7 +39,7 @@ class PhysicsAnimator:
             self.solver.step()
             
             # Store copy (Works for both 1D arrays and 2D matrices)
-            u_curr = self.solver.u_curr.copy()
+            u_curr = np.array(self.solver.u_curr) # Force download to CPU & convert to NumPy
             u_curr[~self.solver.domain.mask] = np.nan
             self.history.append(u_curr)
             self.time_steps.append(t)

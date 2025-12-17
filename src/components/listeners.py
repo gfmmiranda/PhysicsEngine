@@ -9,15 +9,20 @@ class Listener:
 
     def record(self, t, u_field):
         """
-        Extracts value from the field at the listener's location 
-        and appends to history.
+        Records the value at the listener's position.
+        Handles both full field arrays (CPU) and pre-extracted scalars (GPU).
         """
         if self.grid_idx is None:
-            raise ValueError("Listener has not been registered with a solver (grid_idx is None).")
+             raise ValueError("Listener has not been registered with a solver (grid_idx is None).")
         
-        # Extract value at the grid index
-        val = u_field[self.grid_idx]
-        
+        # Check if u_field is a scalar (float/int) or an array
+        if np.isscalar(u_field) or isinstance(u_field, (float, int)):
+            # Optimized GPU case: Value is already extracted
+            val = u_field
+        else:
+            # Standard CPU case: Extract from the grid
+            val = u_field[self.grid_idx]
+            
         self.history.append(val)
         self.times.append(t)
 

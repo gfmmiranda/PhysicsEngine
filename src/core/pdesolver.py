@@ -11,7 +11,6 @@ class PDESolver:
         self.boundary_type = boundary_type
 
         # Static background sources
-        self.source_field = np.zeros(tuple(self.domain.N))
         self.t = 0.0
         
         # Ensure Geometry is ready
@@ -21,7 +20,7 @@ class PDESolver:
 
     def active_source_field(self):
         """Computes the active source field from Domain objects."""
-        active_field = self.source_field.copy()
+        active_field = np.zeros(tuple(self.domain.N))
         # Read directly from the Domain
         for source in self.domain.sources:
             # grid_idx was calculated when source was added to domain
@@ -67,9 +66,9 @@ class PDESolver:
         print(f"Solver reset to t=0.0s.")
 
     def apply_boundary_conditions(self, u):
-        """Forces child classes to define their own physics."""
+        """Must be implemented by child classes."""
         raise NotImplementedError("Child solver must implement apply_boundary_conditions")
 
     def step(self):
         """Must be implemented by child classes."""
-        raise NotImplementedError("Each solver must implement its own time-stepping logic.")
+        raise NotImplementedError("Child solver must implement its own time-stepping logic.")
