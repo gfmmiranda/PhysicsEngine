@@ -61,6 +61,7 @@ class Wave(PDESolver):
         c: float = 1.0,
         boundary_type: str = 'dirichlet'
     ) -> None:
+        
         has_absorption = np.any(domain.materials < 1.0)
         
         if has_absorption and boundary_type == 'dirichlet':

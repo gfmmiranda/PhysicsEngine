@@ -93,9 +93,6 @@ class WaveJAX:
         # Initialize State on GPU
         self.u_prev = jnp.array(self.phi(*self.domain.grids))
         self.u_curr = self.u_prev + self.dt * self.psi(*self.domain.grids)
-
-        print(self.u_prev.shape)
-        print(self.u_curr.shape)
         
         print("Compiling JAX kernel (Warmup)...")
         _ = self.step() # Trigger JIT compilation

@@ -223,7 +223,7 @@ class Domain2D(BaseDomain):
         Physical dimensions [Lx, Ly]. If scalar, creates a square domain.
     dx : float or list of float
         Grid spacing. If scalar, isotropic spacing is used.
-    R : float, default=None
+    material : float, default=None
         Default reflection coefficient for all boundaries.
     
     Attributes
@@ -246,7 +246,7 @@ class Domain2D(BaseDomain):
         self, 
         length: Union[float, List[float]], 
         dx: Union[float, List[float]], 
-        R: float = None
+        material: float = None
     ) -> None:
         if np.ndim(length) == 0:
             length = [length, length]
@@ -257,12 +257,12 @@ class Domain2D(BaseDomain):
         self.X, self.Y = np.meshgrid(self.x, self.y, indexing='ij')
         self.grids = (self.X, self.Y)
         
-        self.materials = np.full(tuple(self.N), R)
+        self.materials = np.full(tuple(self.N), material)
         
         self.mask = np.ones(tuple(self.N), dtype=bool)
         self.update_boundaries()
 
-    def set_material(self, mask_condition: np.ndarray, R_value: float) -> None:
+    def set_material(self, mask_condition: np.ndarray, material_value: float) -> None:
         """
         Set reflection coefficient for a region of the domain.
         
@@ -270,10 +270,11 @@ class Domain2D(BaseDomain):
         ----------
         mask_condition : np.ndarray
             Boolean mask selecting the region.
-        R_value : float
-            Reflection coefficient (0 = fully absorbing, 1 = fully reflective).
+        material_value : float
+            For Wave: Reflection coefficient R (0 = fully absorbing, 1 = fully reflective).
+            For Heat: Convective Heat Transfer Coefficient h (0 = no advection (Neumann), 1 = full advection (Robin)).
         """
-        self.materials[mask_condition] = R_value
+        self.materials[mask_condition] = material_value
     
     def add_rectangular_obstacle(
         self, 
@@ -388,11 +389,17 @@ class Domain2D(BaseDomain):
         
         plt.contour(self.X, self.Y, self.mask, levels=[0.5], colors='black', linewidths=1)
 
-        for s in self.sources:
-            plt.plot(s.pos[0], s.pos[1], 'r*', markersize=12, label='Source')
+        for i, s in enumerate(self.sources):
+            if i == 0:
+                plt.plot(s.pos[0], s.pos[1], 'r*', markersize=12, label='Source')
+            else:
+                plt.plot(s.pos[0], s.pos[1], 'r*', markersize=12)
             
-        for l in self.listeners:
-            plt.plot(l.pos[0], l.pos[1], 'go', markersize=8, label='Mic')
+        for j, l in enumerate(self.listeners):
+            if j == 0:
+                plt.plot(l.pos[0], l.pos[1], 'go', markersize=8, label='Mic')
+            else:
+                plt.plot(l.pos[0], l.pos[1], 'go', markersize=8)
 
         plt.title("Domain Preview: Geometry & Setup")
         plt.xlabel("X [m]")

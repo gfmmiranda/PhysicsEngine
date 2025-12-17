@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Callable, Optional, List, Tuple
 import numpy as np
 
 from src.core import PDESolver
@@ -24,7 +24,7 @@ class Heat(PDESolver):
     k : float, default=1.0
         Thermal diffusivity coefficient.
     boundary_type : str, default='dirichlet'
-        Boundary condition type: 'dirichlet' or 'neumann'.
+        Boundary condition type: 'dirichlet', 'neumann' or robin.
     
     Attributes
     ----------
@@ -41,22 +41,31 @@ class Heat(PDESolver):
     def __init__(
         self,
         domain: BaseDomain,
-        initial_u: Callable[..., np.ndarray],
+        initial_u: Callable[..., np.ndarray] = lambda *args: np.zeros_like(args[0]),
         dt: Optional[float] = None,
         k: float = 1.0,
-        boundary_type: str = 'dirichlet'
+        T_ambient: float = 0.0,
+        boundary_type: str = 'robin'
     ) -> None:
+        
+
         super().__init__(domain, boundary_type)
         self.name = 'Heat'
         
         self.k = k
+        self.T_ambient = T_ambient
         self.phi = initial_u
+        self.h = self.domain.materials
         
         # Stability condition: dt <= 1 / (2k * sum(1/dx_i^2))
         inv_sq_sum = np.sum(1.0 / self.domain.ds**2)
         stability_limit = 1.0 / (2 * k * inv_sq_sum)
         self.dt = 0.99 * stability_limit if dt is None or dt >= stability_limit else dt
         
+        self.boundary_physics_map: List[Tuple] = []
+        if self.boundary_type in ['neumann', 'robin']:
+            self._compile_boundary_physics()
+
         self.initialize_state()
     
     def initialize_state(self) -> None:
@@ -64,6 +73,7 @@ class Heat(PDESolver):
         self.u_curr = self.phi(*self.domain.grids)
         self.apply_boundary_conditions(self.u_curr)
 
+    
     def apply_boundary_conditions(self, u: np.ndarray) -> None:
         """
         Apply thermal boundary conditions.
@@ -80,9 +90,37 @@ class Heat(PDESolver):
         """
         u[~self.domain.mask] = 0.0
 
-        if self.boundary_type == 'neumann':
-            for (wall_idx, air_idx) in self.domain.neumann_map:
-                u[wall_idx] = u[air_idx]
+        # Robin boundary condition (convective heat transfer) via Ghost Point Method
+        # Neumann condition is he a special case with Bi=0
+        for (wall_idx, air_idx, dn, h) in self.boundary_physics_map:
+            
+            coeff = (2*self.k*self.dt)/(dn**2)
+            local_Bi = h * dn / self.k
+
+            u_wall_n = self.u_curr[wall_idx]
+            u_air_n = self.u_curr[air_idx]
+
+            u[wall_idx] = u_wall_n + \
+                coeff * (u_air_n - u_wall_n - local_Bi*(u_wall_n - self.T_ambient))
+
+    def _compile_boundary_physics(self) -> None:
+        """
+        Pre-compute boundary data for efficient time-stepping.
+        
+        Stores wall index, air neighbor index, normal spacing, and local
+        reflection coefficient for each boundary point.
+        """
+        for (wall_idx, air_idx) in self.domain.neumann_map:
+            axis = 0
+            for dim in range(self.domain.ndim):
+                if wall_idx[dim] != air_idx[dim]:
+                    axis = dim
+                    break
+            
+            dn = self.domain.ds[axis]
+            local_h = self.h[wall_idx]
+            self.boundary_physics_map.append((wall_idx, air_idx, dn, local_h))
+
 
     def step(self) -> None:
         """
@@ -96,3 +134,6 @@ class Heat(PDESolver):
         self.apply_boundary_conditions(u_next)
         self.u_curr = u_next
         self.t += self.dt
+
+        for listener in self.domain.listeners:
+            listener.record(self.t, self.u_curr)
