@@ -3,23 +3,15 @@ from src.components import HarmonicSource
 
 class PDESolver:
     """
-    Base class for 1, 2 or 3D finite difference solvers. 
-    Handles domain binding, boundary conditions, and spatial derivatives.
+    Base class for Finite Difference solvers.
+    Acts purely as a compute engine over the Domain.
     """
     def __init__(self, domain, boundary_type='dirichlet'):
         self.domain = domain
         self.boundary_type = boundary_type
 
-        # Static background sources (e.g. constant heat)
+        # Static background sources
         self.source_field = np.zeros(tuple(self.domain.N))
-
-        # Dynamic sources (e.g. harmoni oscillators)
-        self.dynamic_sources = []
-
-        # List for possible listeners
-        self.listeners = []
-
-        # Simulation time
         self.t = 0.0
         
         # Ensure Geometry is ready
@@ -27,36 +19,16 @@ class PDESolver:
             if not hasattr(self.domain, 'neumann_map'):
                 self.domain.generate_neumann_map()
 
-    def add_source_field(self, pos, value):
-        """
-        Generic method to add a point source.
-        """
-        idx = self.domain.physical_to_index(pos)
-        self.source_field[idx] += value
-
-    def add_dynamic_source(self, source: HarmonicSource):
-        """
-        Adds a dynamic source to the solver.
-        The source's grid index is computed and stored.
-        """
-        source.grid_idx = self.domain.physical_to_index(source.pos)
-        self.dynamic_sources.append(source)
-
     def active_source_field(self):
-        """Computes the active source field at the current time."""
+        """Computes the active source field from Domain objects."""
         active_field = self.source_field.copy()
-        for source in self.dynamic_sources:
+        # Read directly from the Domain
+        for source in self.domain.sources:
+            # grid_idx was calculated when source was added to domain
             active_field[source.grid_idx] += source.value(self.t)
+
         return active_field
     
-    def add_listener(self, listener):
-        """
-        Registers a listener object.
-        Calculates grid index once for efficiency.
-        """
-        listener.grid_idx = self.domain.physical_to_index(listener.pos)
-        self.listeners.append(listener)
-
     def laplacian(self, u):
         """Standard finite difference Laplacian."""
 
@@ -85,22 +57,14 @@ class PDESolver:
         return lap
     
     def reset(self):
-        """
-        Resets the simulation to t=0, clears listeners, and restores initial conditions.
-        Preserves: Domain, Sources, Listeners, and Boundary physics.
-        """
         self.t = 0.0
-        
-        # 1. Clear Listener History
-        for listener in self.listeners:
+        # Reset listeners in the domain
+        for listener in self.domain.listeners:
             if hasattr(listener, 'reset'):
                 listener.reset()
         
-        # 2. Re-calculate Initial Fields (Polymorphic call to child class)
-        # This uses the saved self.phi / self.psi functions in Wave/Heat
         self.initialize_state()
-        
-        print(f"Solver reset to t=0.0s. Ready to run.")
+        print(f"Solver reset to t=0.0s.")
 
     def apply_boundary_conditions(self, u):
         """Forces child classes to define their own physics."""

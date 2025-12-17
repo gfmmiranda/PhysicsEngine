@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 class BaseDomain:
     """
@@ -25,6 +26,24 @@ class BaseDomain:
         # 4. Initialize placeholders
         self.mask = None
         self.is_wall = None
+        self.sources = []
+        self.listeners = []
+
+    def add_source(self, source):
+        if not self._is_valid_position(source.pos):
+            print(f"⚠️ Warning: Source at {source.pos} is inside a wall!")
+        source.grid_idx = self.physical_to_index(source.pos)
+        self.sources.append(source)
+
+    def add_listener(self, listener):
+        if not self._is_valid_position(listener.pos):
+            print(f"⚠️ Warning: Listener at {listener.pos} is inside a wall!")
+        listener.grid_idx = self.physical_to_index(listener.pos)
+        self.listeners.append(listener)
+
+    def _is_valid_position(self, pos):
+        idx = self.physical_to_index(pos)
+        return self.mask[idx] # Returns False if wall
 
     def update_boundaries(self):
         """Standard N-dimensional boundary enforcer."""
@@ -95,6 +114,8 @@ class BaseDomain:
             indices.append(idx)
             
         return tuple(indices)
+    
+    
 
 class Domain1D(BaseDomain):
     """Specific implementation for 1D lines."""
@@ -111,7 +132,7 @@ class Domain1D(BaseDomain):
         self.update_boundaries()
 
 class Domain2D(BaseDomain):
-    def __init__(self, length, dx):
+    def __init__(self, length, dx, R=0.1):
         # Length can be [10, 20] or just 10 (square)
         if np.ndim(length) == 0: length = [length, length]
         super().__init__(length, dx)
@@ -119,14 +140,22 @@ class Domain2D(BaseDomain):
         # Create 2D Grid
         self.x = np.linspace(0, self.L[0], self.N[0])
         self.y = np.linspace(0, self.L[1], self.N[1])
-        # indexing='ij' is crucial for matrix notation (row, col) -> (x, y)
         self.X, self.Y = np.meshgrid(self.x, self.y, indexing='ij')
         self.grids = (self.X, self.Y)
         
-        # Create Mask (2D array)
+        # Material Map (Scene owns this!)
+        self.materials = np.full(tuple(self.N), R) 
+        
         self.mask = np.ones(tuple(self.N), dtype=bool)
         self.update_boundaries()
 
+    def set_material(self, mask_condition, R_value):
+        """
+        Paints a region of the domain with a specific Reflection Coefficient.
+        Moved here from Wave class.
+        """
+        self.materials[mask_condition] = R_value
+    
     def add_rectangular_obstacle(self, pos, size):
         """
         pos: [x, y] center or bottom-left
@@ -152,3 +181,43 @@ class Domain2D(BaseDomain):
         self.mask[is_outside] = False
         
         self.update_boundaries()
+
+    def preview(self):
+        """
+        The 'Killer Feature' for debugging. 
+        Plots geometry, materials, sources, and listeners in one go.
+        """
+        plt.figure(figsize=(8, 6))
+        
+        # 1. Plot the Walls (Black) and Air (White)
+        # We use the material map for color to verify R-values!
+        # Mask walls are shown, Air is transparent or white
+        
+        # Create a visual matrix:
+        # Walls = Material Value (0.0 to 1.0)
+        # Air = NaN (so it doesn't mess up the color scale)
+        visual_map = self.materials.copy()
+        visual_map[self.mask] = np.nan # Hide air
+        
+        # Plot Walls with Colorbar (to see Hard vs Soft)
+        plt.imshow(visual_map.T, origin='lower', cmap='inferno', 
+                   extent=[0, self.L[0], 0, self.L[1]], vmin=0, vmax=1)
+        plt.colorbar(label="Wall Reflection Coeff (R)")
+        
+        # Plot Air boundaries (just to see shape clearly)
+        plt.contour(self.X, self.Y, self.mask, levels=[0.5], colors='black', linewidths=1)
+
+        # 2. Plot Sources (Red Stars)
+        for s in self.sources:
+            plt.plot(s.pos[0], s.pos[1], 'r*', markersize=12, label='Source')
+            
+        # 3. Plot Listeners (Green Circles)
+        for l in self.listeners:
+            plt.plot(l.pos[0], l.pos[1], 'go', markersize=8, label='Mic')
+
+        plt.title("Domain Preview: Geometry & Setup")
+        plt.xlabel("X [m]")
+        plt.ylabel("Y [m]")
+        plt.legend(loc='upper right')
+        plt.grid(True, alpha=0.3)
+        plt.show()

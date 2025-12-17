@@ -10,12 +10,13 @@ class Wave(PDESolver):
             dt=None, 
             c=1.0, 
             boundary_type='dirichlet',
-            R=1.0
+            R=None
             ):
         
-        # If user sets alpha > 0 and boundary_type is dirichlet, override to robin
-        if R < 1.0 and boundary_type == 'dirichlet':
-            print("R < 1.0 with Dirichlet BCs detected. Switching to Robin BCs for absorption.")
+        has_absorption = np.any(domain.materials < 1.0)
+        
+        if has_absorption and boundary_type == 'dirichlet':
+            print("Auto-switching to 'robin' boundaries (Absorption detected in Domain).")
             boundary_type = 'robin'
         
         # Pass generic args to parent
@@ -26,7 +27,7 @@ class Wave(PDESolver):
         self.c = c
         self.phi = initial_u
         self.psi = initial_ut
-        self.R = R
+        self.R_map = self.domain.materials  # Reflection Coefficient Map
         
         # CFL Condition: dt <= dx / (c * sqrt(2))
         inv_sq_sum = np.sum(1.0 / self.domain.ds**2)
@@ -104,10 +105,10 @@ class Wave(PDESolver):
             dn = self.domain.ds[axis]
             
             # C. Get Reflection Coefficient for this wall
-            val_R = self.R
+            local_R = self.R_map[wall_idx]
 
             # D. Store 'dn' too! This saves us from finding 'axis' every single time step.
-            self.boundary_physics_map.append((wall_idx, air_idx, dn, val_R))
+            self.boundary_physics_map.append((wall_idx, air_idx, dn, local_R))
 
     def step(self):
         # 1. Compute Physics
@@ -123,5 +124,5 @@ class Wave(PDESolver):
         self.t += self.dt
 
         # 4. Record Data
-        for listener in self.listeners:
+        for listener in self.domain.listeners:
             listener.record(self.t, self.u_curr)

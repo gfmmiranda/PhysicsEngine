@@ -78,7 +78,7 @@ class PhysicsAnimator:
         # -------------------------------------
 
         # Check for listeners safely
-        listeners = getattr(self.solver, 'listeners', [])
+        listeners = getattr(self.solver.domain, 'listeners', [])
         has_listeners = len(listeners) > 0
 
         frames = []
@@ -119,9 +119,9 @@ class PhysicsAnimator:
         # === 2D SETUP ===
         elif self.solver.domain.ndim == 2:
             initial_data.append(go.Surface(
-                x=self.x_axis, y=self.y_axis, z=display_data[0],
+                x=self.x_axis, y=self.y_axis, z=display_data[0].T,
                 colorscale='viridis',
-                cmin=global_min, cmax=global_max, # <--- Dynamic Color Scale
+                cmin=global_min, cmax=global_max,
                 name="Wave"
             ))
             
@@ -147,7 +147,7 @@ class PhysicsAnimator:
             )
 
             for i, state in enumerate(display_data):
-                frame_data = [go.Surface(z=state)]
+                frame_data = [go.Surface(z=state.T)]
                 if has_listeners:
                     l_z_new = [state[l.grid_idx] for l in listeners]
                     l_x = [l.pos[0] for l in listeners]
