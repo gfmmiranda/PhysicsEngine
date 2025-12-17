@@ -60,7 +60,6 @@ class BaseDomain:
         self.is_wall: Optional[np.ndarray] = None
         self.sources: List = []
         self.listeners: List = []
-        self.neumann_map: List[Tuple] = []
 
     def add_source(self, source) -> None:
         """
