@@ -182,6 +182,56 @@ class Domain2D(BaseDomain):
         
         self.update_boundaries()
 
+    def add_smart_speaker(self, center, source, inner_size=[1.0, 1.0], wall_width=0.1):
+        cx, cy = center
+        w_in, h_in = inner_size
+        t = wall_width
+        
+        # --- 1. Calculate Geometry ---
+        
+        # A. Back Wall (Bottom)
+        # Spans full width (inner + 2*walls) to seal corners
+        # Center X: Same as speaker center (cx)
+        # Center Y: Shift down by half height + half thickness
+        back_size = [w_in + 2*t, t]
+        back_pos  = [cx, cy - h_in/2 - t/2]
+        
+        # B. Left Wall
+        # Center X: Shift left by half width + half thickness
+        # Center Y: Same as speaker center (cy) - assuming simple U shape
+        left_size = [t, h_in]
+        left_pos  = [cx - w_in/2 - t/2, cy]
+        
+        # C. Right Wall
+        # Center X: Shift right by half width + half thickness
+        right_size = [t, h_in]
+        right_pos  = [cx + w_in/2 + t/2, cy]
+        
+        # --- 2. Add Obstacles ---
+        self.add_rectangular_obstacle(back_pos, back_size)
+        self.add_rectangular_obstacle(left_pos, left_size)
+        self.add_rectangular_obstacle(right_pos, right_size)
+        
+        # --- 3. Paint Materials ---
+        X, Y = self.grids
+        
+        # Helper must match your Domain's "Center" logic!
+        def get_mask(p, s):
+            return (
+                (X >= p[0] - s[0]/2) & (X <= p[0] + s[0]/2) & 
+                (Y >= p[1] - s[1]/2) & (Y <= p[1] + s[1]/2)
+            )
+
+        speaker_mask = (get_mask(back_pos, back_size) | 
+                        get_mask(left_pos, left_size) | 
+                        get_mask(right_pos, right_size))
+        
+        self.materials[speaker_mask] = 1.0
+        
+        # --- 4. Add Source ---
+        self.add_source(source)
+        print(f"✅ Smart Speaker added at {center}")
+
     def preview(self):
         """
         The 'Killer Feature' for debugging. 

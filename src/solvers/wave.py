@@ -72,17 +72,16 @@ class Wave(PDESolver):
 
             # --- Calculate Extremes ---
             
-            # A. Absorbing Limit (Corrected Mur 1st Order)
+            # A. Absorbing Limit (Mur 1st Order)
             # Formula: u_wall_next = u_air_curr + (lam-1)/(lam+1) * (u_air_next - u_wall_curr)
             # This correctly "transports" the wave out of the domain.
             coeff_absorb = (lam - 1.0) / (lam + 1.0)
             val_absorb = u_air_n + coeff_absorb * (u_air_next - u_wall_n)
             
-            # B. Hard Limit (Corrected 2nd Order Neumann)
-            # We use the ghost point method (u_ghost = u_air) plugged into the wave equation.
-            # This ensures the wall follows the standard wave physics (stable).
-            val_hard = (2.0 * u_wall_n - u_wall_nm1 + 
-                        (lam**2) * (2.0 * u_air_n - 2.0 * u_wall_n))
+            # B. Hard Limit (2nd Order Neumann)
+            # Ghost point method (u_ghost = u_air) plugged into the wave equation.
+            # This ensures the wall follows the standard wave physics.
+            val_hard = (2.0 * u_wall_n - u_wall_nm1 + (lam**2) * (2.0 * u_air_n - 2.0 * u_wall_n))
             
             # --- Mix ---
             # Linear interpolation between Hard (R=1) and Absorbing (R=0)

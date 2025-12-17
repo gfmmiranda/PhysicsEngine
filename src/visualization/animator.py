@@ -47,15 +47,18 @@ class PhysicsAnimator:
             
         print("Simulation complete.")
 
-    def create_animation(self, skip_frames=10, filename=None):
+    def create_animation(self, skip_frames=10, skip_spatial=5, filename=None):
         """Generates the interactive Plotly figure with dynamic Z-scaling."""
         
         if not self.history:
             print("No data! Run .run() first.")
             return
 
-        # Subsample data
+        # Subsample data - Time
         display_data = self.history[::skip_frames]
+
+        # Subsample data - Space
+        s_slice = slice(None, None, skip_spatial)
         
         # --- NEW: Calculate Dynamic Limits ---
         # We stack the frames to find the global min/max across the entire animation
@@ -85,12 +88,15 @@ class PhysicsAnimator:
         initial_data = []
         layout_settings = {}
 
-        print('Animating...')
+        print(f'Animating {len(display_data)} frames (Spatial stride: {skip_spatial})...')
+
+        def process(frame):
+            return frame.T[s_slice, s_slice]
 
         # === 1D SETUP ===
         if self.solver.domain.ndim == 1:
             initial_data.append(go.Scatter(
-                x=self.x_axis, y=display_data[0], mode="lines", name="Wave",
+                x=self.x_axis, y=process(display_data[0]), mode="lines", name="Wave",
                 line=dict(color='royalblue', width=2)
             ))
             
@@ -109,17 +115,22 @@ class PhysicsAnimator:
                 template="plotly_white"
             )
 
-            for i, state in enumerate(display_data):
-                frame_data = [go.Scatter(y=state)]
+            for i, raw_frame in enumerate(display_data):
+                # frame_data = [go.Scatter(y=process(raw_frame))]
                 if has_listeners:
-                    l_y_new = [state[l.grid_idx] for l in listeners]
+                    l_y_new = [raw_frame[l.grid_idx] for l in listeners]
                     frame_data.append(go.Scatter(y=l_y_new))
-                frames.append(go.Frame(data=frame_data, name=f"f{i}"))
+                frames.append(go.Frame(data=raw_frame, name=f"f{i}"))
 
         # === 2D SETUP ===
         elif self.solver.domain.ndim == 2:
+
+            # Subsample in Space
+            x_plot = self.x_axis[s_slice]
+            y_plot = self.y_axis[s_slice]
+
             initial_data.append(go.Surface(
-                x=self.x_axis, y=self.y_axis, z=display_data[0].T,
+                x=x_plot, y=y_plot, z=process(display_data[0]),
                 colorscale='viridis',
                 cmin=global_min, cmax=global_max,
                 name="Wave"
@@ -146,10 +157,10 @@ class PhysicsAnimator:
                 template="plotly_white"
             )
 
-            for i, state in enumerate(display_data):
-                frame_data = [go.Surface(z=state.T)]
+            for i, raw_frame in enumerate(display_data):
+                frame_data = [go.Surface(z=process(raw_frame))]
                 if has_listeners:
-                    l_z_new = [state[l.grid_idx] for l in listeners]
+                    l_z_new = [raw_frame[l.grid_idx] for l in listeners]
                     l_x = [l.pos[0] for l in listeners]
                     l_y = [l.pos[1] for l in listeners]
                     frame_data.append(go.Scatter3d(x=l_x, y=l_y, z=l_z_new))

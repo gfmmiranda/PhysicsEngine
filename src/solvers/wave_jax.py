@@ -51,31 +51,60 @@ def wave_step_kernel(
 
 # --- 2. THE CLASS (Manages Data) ---
 class WaveJAX:
-    def __init__(self, domain, c=343.0, dt=None, boundary_type='robin'):
+    def __init__(
+            self, 
+            domain,
+            initial_u = None, 
+            initial_ut = None, 
+            c=343.0, 
+            dt=None, 
+            boundary_type='robin',
+            R=None
+            ):
+        
+        has_absorption = np.any(domain.materials < 1.0)
+        
+        if has_absorption and boundary_type == 'dirichlet':
+            print("Auto-switching to 'robin' boundaries (Absorption detected in Domain).")
+            boundary_type = 'robin'
+        
         self.domain = domain
+        self.phi = initial_u if initial_u is not None else (lambda *args: jnp.zeros(domain.N))
+        self.psi = initial_ut if initial_ut is not None else (lambda *args: 0.0)
         self.c = c
         self.t = 0.0
         
-        # Setup Grid
-        # Pre-calc 1/dx^2 for speed
-        self.inv_dx_sq = jnp.array([1.0/d**2 for d in domain.ds])
+        # 1. ROBUST GRID CONSTANTS
+        # Ensure we have a flat 1D array of scalars [dx, dy]
+        # np.ravel is safer than flatten() for lists/mixed types
+        ds_flat = np.ravel(np.array(domain.ds)) 
+        self.inv_dx_sq = jnp.array([1.0/d**2 for d in ds_flat])
         
-        # CFL Condition
-        inv_sq_sum = np.sum(1.0 / domain.ds**2)
-        cfl_limit = 1.0 / (c * np.sqrt(inv_sq_sum))
+        # 2. CORRECT SCALAR CFL CONDITION
+        # Formula: dt <= 1 / (c * sqrt(1/dx^2 + 1/dy^2))
+        # We must sum the inverse squares first to get the 2D stability limit
+        inv_sq_sum = jnp.sum(self.inv_dx_sq)
+        cfl_limit = 1.0 / (c * jnp.sqrt(inv_sq_sum))
         self.dt = 0.99 * cfl_limit if dt is None or dt >= cfl_limit else dt
         
         # Compile Geometry for GPU
         self._compile_gpu_data()
         
         # Initialize State on GPU
-        # We start with zeros. If you have initial conditions, map them here.
-        self.u_curr = jnp.zeros(domain.N)
-        self.u_prev = jnp.zeros(domain.N)
+        self.u_prev = jnp.array(self.phi(*self.domain.grids))
+        self.u_curr = self.u_prev + self.dt * self.psi(*self.domain.grids)
+
+        print(self.u_prev.shape)
+        print(self.u_curr.shape)
         
         print("Compiling JAX kernel (Warmup)...")
         _ = self.step() # Trigger JIT compilation
         self.t = 0.0    # Reset time after warmup
+
+        if hasattr(self.domain, 'listeners'):
+            for listener in self.domain.listeners:
+                listener.reset()
+
         print("Model compiled and ready on GPU.")
 
     def _compile_gpu_data(self):
