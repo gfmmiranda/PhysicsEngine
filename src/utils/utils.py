@@ -120,3 +120,4 @@ def find_first_arrival(signal: np.ndarray, threshold_ratio: float = 0.1) -> int:
         return peaks[0]
     else:
         return np.argmax(signal)
+

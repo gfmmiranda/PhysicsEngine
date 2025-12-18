@@ -1,36 +1,42 @@
-from typing import Optional, Tuple, Union, List
+from typing import Optional, List, Tuple, Union
 import numpy as np
 
-
-class HarmonicSource:
+class Source:
     """
-    Point source emitting a sinusoidal signal.
-    
-    Parameters
-    ----------
-    pos : float or list of float
-        Physical position coordinates.
-    frequency : float
-        Oscillation frequency in Hz.
-    amplitude : float, default=1.0
-        Signal amplitude.
-    phase : float, default=0.0
-        Initial phase in radians.
+    Abstract base class for all wave sources.
     
     Attributes
     ----------
     pos : np.ndarray
-        Source position.
-    frequency : float
-        Oscillation frequency.
-    amplitude : float
-        Signal amplitude.
-    phase : float
-        Phase offset.
-    grid_idx : tuple of int or None
-        Grid index assigned by domain upon registration.
+        Physical position.
+    injection_points : list of (tuple, float)
+        List of (grid_index, weight) tuples calculated upon registration.
+        Example: [((50, 50), 1.0)] for a point source.
     """
+    def __init__(self, pos: Union[float, List[float]]):
+        self.pos = np.atleast_1d(np.array(pos, dtype=float))
+        self.injection_points: List[Tuple[Tuple[int, ...], float]] = []
 
+    def register(self, domain) -> None:
+        """
+        Calculates grid indices based on the domain geometry.
+        Default implementation registers a single point source.
+        """
+        idx = domain.physical_to_index(self.pos)
+        
+        # specific check using domain methods
+        if hasattr(domain, 'mask') and not domain.mask[idx]:
+             print(f"⚠️ Warning: Source at {self.pos} is inside a wall!")
+             
+        # Standard Monopole: One point, weight 1.0
+        self.injection_points = [(idx, 1.0)]
+
+    def value(self, t: float) -> float:
+        """Return the raw signal amplitude at time t."""
+        raise NotImplementedError
+
+
+class HarmonicSource(Source):
     def __init__(
         self,
         pos: Union[float, List[float]],
@@ -38,88 +44,66 @@ class HarmonicSource:
         amplitude: float = 1.0,
         phase: float = 0.0
     ) -> None:
-        self.pos = np.atleast_1d(np.array(pos, dtype=float))
+        super().__init__(pos)
         self.frequency = frequency
         self.amplitude = amplitude
         self.phase = phase
-        self.grid_idx: Optional[Tuple[int, ...]] = None
 
     def value(self, t: float) -> float:
-        """
-        Compute signal value at time t.
-        
-        Parameters
-        ----------
-        t : float
-            Current simulation time.
-        
-        Returns
-        -------
-        float
-            Signal amplitude: A*sin(ωt + φ).
-        """
         omega = 2 * np.pi * self.frequency
         return self.amplitude * np.sin(omega * t + self.phase)
 
 
-class RickerSource:
-    """
-    Ricker wavelet (Mexican hat) point source.
-    
-    Commonly used in seismic and acoustic simulations as a broadband
-    pulse with well-defined spectral content centered at the peak frequency.
-    
-    Parameters
-    ----------
-    pos : float or list of float
-        Physical position coordinates.
-    peak_freq : float
-        Central frequency of the wavelet in Hz.
-    delay : float
-        Time delay before wavelet peak in seconds.
-    amplitude : float, default=1.0
-        Signal amplitude scaling.
-    
-    Attributes
-    ----------
-    pos : np.ndarray
-        Source position.
-    fp : float
-        Peak frequency.
-    dr : float
-        Time delay.
-    amp : float
-        Amplitude.
-    grid_idx : tuple of int or None
-        Grid index assigned by domain upon registration.
-    """
-
+class RickerSource(Source):
     def __init__(
         self,
         pos: Union[float, List[float]],
-        peak_freq: float,
+        frequency: float,
         delay: float,
         amplitude: float = 1.0
     ) -> None:
-        self.pos = np.atleast_1d(np.array(pos, dtype=float))
-        self.grid_idx: Optional[Tuple[int, ...]] = None
-        self.fp = peak_freq
+        super().__init__(pos)
+        self.fp = frequency
         self.dr = delay
         self.amp = amplitude
 
     def value(self, t: float) -> float:
-        """
-        Compute Ricker wavelet value at time t.
-        
-        Parameters
-        ----------
-        t : float
-            Current simulation time.
-        
-        Returns
-        -------
-        float
-            Wavelet amplitude: A*(1 - 2τ²)*exp(-τ²) where τ = π*fp*(t - delay).
-        """
         tau = np.pi * self.fp * (t - self.dr)
         return self.amp * (1 - 2 * tau**2) * np.exp(-tau**2)
+
+
+class DipoleSource(HarmonicSource):
+    """
+    Two anti-phase point sources separated by a small distance.
+    """
+    def __init__(
+        self, 
+        pos: Union[float, List[float]], 
+        frequency: float,
+        amplitude: float = 1.0,
+        orientation: float = 0.0,
+        separation: float = 0.1, 
+        **kwargs
+    ) -> None:
+        super().__init__(pos, frequency, amplitude)
+        self.theta = orientation
+        self.sep = separation
+
+    def register(self, domain) -> None:
+        """Overrides registration to create two injection points."""
+        cx, cy = self.pos[0], self.pos[1]
+        
+        # Calculate offsets
+        dx = (self.sep / 2.0) * np.cos(self.theta)
+        dy = (self.sep / 2.0) * np.sin(self.theta)
+
+        print(dx, dy)
+        
+        idx_plus = domain.physical_to_index([cx + dx, cy + dy])
+        idx_minus = domain.physical_to_index([cx - dx, cy - dy])
+        
+        # Register both points with opposite weights
+        self.injection_points = [
+            (idx_plus, 1.0),
+            (idx_minus, -1.0)
+        ]

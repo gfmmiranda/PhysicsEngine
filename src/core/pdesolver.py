@@ -41,7 +41,7 @@ class PDESolver:
         if self.boundary_type in ['neumann', 'robin']:
             if not hasattr(self.domain, 'neumann_map'):
                 self.domain.generate_neumann_map()
-
+    
     def active_source_field(self) -> np.ndarray:
         """
         Compute the source field at the current time.
@@ -55,8 +55,13 @@ class PDESolver:
             Source field with same shape as domain grid.
         """
         active_field = np.zeros(tuple(self.domain.N))
+        
         for source in self.domain.sources:
-            active_field[source.grid_idx] += source.value(self.t)
+            signal = source.value(self.t)
+            
+            for grid_idx, weight in source.injection_points:
+                active_field[grid_idx] += signal * weight
+                
         return active_field
     
     def laplacian(self, u: np.ndarray) -> np.ndarray:

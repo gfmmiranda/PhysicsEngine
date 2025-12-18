@@ -6,13 +6,12 @@ class Listener:
     """
     Point receiver for recording field values over time.
     
-    Records the time series at a fixed spatial location, enabling
-    impulse response and frequency response analysis.
-    
     Parameters
     ----------
     pos : float or list of float
         Physical position coordinates.
+    tag : str, default='mic'
+        Label for plotting and debugging.
     
     Attributes
     ----------
@@ -20,10 +19,6 @@ class Listener:
         Listener position.
     grid_idx : tuple of int or None
         Grid index assigned by domain upon registration.
-    history : list of float
-        Recorded field values.
-    times : list of float
-        Corresponding time stamps.
     """
 
     def __init__(self, pos: Union[float, List[float]], tag: str = 'mic') -> None:
@@ -33,30 +28,30 @@ class Listener:
         self.history: List[float] = []
         self.times: List[float] = []
 
+    def register(self, domain) -> None:
+        """
+        Calculates grid index based on the domain geometry.
+        Called automatically when added to a Domain.
+        """
+        # 1. Calculate Grid Index
+        self.grid_idx = domain.physical_to_index(self.pos)
+        
+        # 2. Safety Check (Wall Detection)
+        # We access the mask directly using the index we just calculated
+        if hasattr(domain, 'mask') and domain.mask is not None:
+            if not domain.mask[self.grid_idx]:
+                print(f"⚠️ Warning: Listener '{self.tag}' at {self.pos} is inside a wall!")
+
     def reset(self) -> None:
         """Clear recorded data for a new simulation run."""
         self.history = []
         self.times = []
 
     def record(self, t: float, u_field: np.ndarray) -> None:
-        """
-        Sample the field at the listener location.
-        
-        Parameters
-        ----------
-        t : float
-            Current simulation time.
-        u_field : np.ndarray
-            Current field state.
-        
-        Raises
-        ------
-        ValueError
-            If listener has not been registered with a domain.
-        """
         if self.grid_idx is None:
-            raise ValueError("Listener has not been registered with a solver.")
+            raise ValueError(f"Listener '{self.tag}' has not been registered with a domain.")
         
+        # Handle both Scalar (GPU/Optimized) and Array (CPU) inputs
         if np.isscalar(u_field) or isinstance(u_field, (float, int)):
             val = u_field
         else:
@@ -66,40 +61,17 @@ class Listener:
         self.times.append(t)
 
     def get_time_series(self) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Retrieve the recorded time series.
-        
-        Returns
-        -------
-        times : np.ndarray
-            Time stamps array.
-        signal : np.ndarray
-            Recorded amplitude values.
-        """
         return np.array(self.times), np.array(self.history)
 
-    def compute_spectrum(
-        self
-    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-        """
-        Compute the frequency spectrum of the recorded signal via FFT.
-        
-        Returns
-        -------
-        freqs : np.ndarray or None
-            Frequency bins in Hz.
-        magnitude : np.ndarray or None
-            Magnitude spectrum. Returns (None, None) if insufficient data.
-        """
+    def compute_spectrum(self) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Compute frequency spectrum using Real FFT."""
         times, signal = self.get_time_series()
         n = len(signal)
-        if n < 2:
-            return None, None
+        if n < 2: return None, None
         
         dt = times[1] - times[0]
-        
+        # Safety check for duplicate timestamps (e.g. from JAX warmup)
         if dt <= 1e-9:
-            print("⚠️ Warning: Duplicate timestamps detected (dt=0). Spectrum may be invalid.")
             dt = np.mean(np.diff(times))
         
         fft_data = np.fft.rfft(signal)

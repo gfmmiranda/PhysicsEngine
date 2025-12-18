@@ -63,16 +63,15 @@ class BaseDomain:
 
     def add_source(self, source) -> None:
         """
-        Register a source in the domain.
+        Register a listener in the domain.
         
         Parameters
         ----------
-        source : HarmonicSource or RickerSource
+        source : Source
             Source object to register.
         """
-        if not self._is_valid_position(source.pos):
-            print(f"⚠️ Warning: Source at {source.pos} is inside a wall!")
-        source.grid_idx = self.physical_to_index(source.pos)
+        # Delegate registration to the source object
+        source.register(self)
         self.sources.append(source)
 
     def add_listener(self, listener) -> None:
@@ -84,15 +83,10 @@ class BaseDomain:
         listener : Listener
             Listener object to register.
         """
-        if not self._is_valid_position(listener.pos):
-            print(f"⚠️ Warning: Listener at {listener.pos} is inside a wall!")
-        listener.grid_idx = self.physical_to_index(listener.pos)
+        # Delegate registration to the listener object
+        # This mirrors the behavior of add_source
+        listener.register(self)
         self.listeners.append(listener)
-
-    def _is_valid_position(self, pos: Union[float, List[float]]) -> bool:
-        """Check if a position is in the air (not a wall)."""
-        idx = self.physical_to_index(pos)
-        return self.mask[idx]
 
     def update_boundaries(self) -> None:
         """
@@ -313,63 +307,64 @@ class Domain2D(BaseDomain):
         self.mask[is_outside] = False
         self.update_boundaries()
 
-    def add_smart_speaker(
-        self, 
-        center: List[float], 
-        source, 
-        inner_size: List[float] = [1.0, 1.0], 
-        wall_width: float = 0.1
-    ) -> None:
-        """
-        Add a U-shaped speaker enclosure with a source inside.
+    # def add_smart_speaker(
+    #     self, 
+    #     center: List[float], 
+    #     source, 
+    #     inner_size: List[float] = [1.0, 1.0], 
+    #     wall_width: float = 0.1
+    # ) -> None:
+    #     """
+    #     Add a U-shaped speaker enclosure with a source inside.
         
-        Creates a three-walled enclosure (back, left, right) with the
-        source positioned at the opening. Walls are set to fully reflective.
+    #     Creates a three-walled enclosure (back, left, right) with the
+    #     source positioned at the opening. Walls are set to fully reflective.
         
-        Parameters
-        ----------
-        center : list of float
-            Center position [x, y] of the speaker.
-        source : HarmonicSource or RickerSource
-            Source to place inside the enclosure.
-        inner_size : list of float, default=[1.0, 1.0]
-            Interior dimensions [width, height].
-        wall_width : float, default=0.1
-            Thickness of the enclosure walls.
-        """
-        cx, cy = center
-        w_in, h_in = inner_size
-        t = wall_width
+    #     Parameters
+    #     ----------
+    #     center : list of float
+    #         Center position [x, y] of the speaker.
+    #     source : HarmonicSource or RickerSource
+    #         Source to place inside the enclosure.
+    #     inner_size : list of float, default=[1.0, 1.0]
+    #         Interior dimensions [width, height].
+    #     wall_width : float, default=0.1
+    #         Thickness of the enclosure walls.
+    #     """
+    #     cx, cy = center
+    #     w_in, h_in = inner_size
+    #     t = wall_width
         
-        back_size = [w_in + 2*t, t]
-        back_pos  = [cx, cy - h_in/2 - t/2]
+    #     back_size = [w_in + 2*t, t]
+    #     back_pos  = [cx, cy - h_in/2 - t/2]
         
-        left_size = [t, h_in]
-        left_pos  = [cx - w_in/2 - t/2, cy]
+    #     left_size = [t, h_in]
+    #     left_pos  = [cx - w_in/2 - t/2, cy]
         
-        right_size = [t, h_in]
-        right_pos  = [cx + w_in/2 + t/2, cy]
+    #     right_size = [t, h_in]
+    #     right_pos  = [cx + w_in/2 + t/2, cy]
         
-        self.add_rectangular_obstacle(back_pos, back_size)
-        self.add_rectangular_obstacle(left_pos, left_size)
-        self.add_rectangular_obstacle(right_pos, right_size)
+    #     self.add_rectangular_obstacle(back_pos, back_size)
+    #     self.add_rectangular_obstacle(left_pos, left_size)
+    #     self.add_rectangular_obstacle(right_pos, right_size)
         
-        X, Y = self.grids
+    #     X, Y = self.grids
         
-        def get_mask(p, s):
-            return (
-                (X >= p[0] - s[0]/2) & (X <= p[0] + s[0]/2) & 
-                (Y >= p[1] - s[1]/2) & (Y <= p[1] + s[1]/2)
-            )
+    #     def get_mask(p, s):
+    #         return (
+    #             (X >= p[0] - s[0]/2) & (X <= p[0] + s[0]/2) & 
+    #             (Y >= p[1] - s[1]/2) & (Y <= p[1] + s[1]/2)
+    #         )
 
-        speaker_mask = (get_mask(back_pos, back_size) | 
-                        get_mask(left_pos, left_size) | 
-                        get_mask(right_pos, right_size))
+    #     speaker_mask = (get_mask(back_pos, back_size) | 
+    #                     get_mask(left_pos, left_size) | 
+    #                     get_mask(right_pos, right_size))
         
-        self.materials[speaker_mask] = 1.0
+    #     self.materials[speaker_mask] = 1.0
         
-        self.add_source(source)
-        print(f"✅ Smart Speaker added at {center}")
+    #     self.add_source(source)
+    #     print(f"✅ Smart Speaker added at {center}")
+        
 
     def preview(self) -> None:
         """

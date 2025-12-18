@@ -1,1 +1,1 @@
-from .animator import PhysicsAnimator
+from .animator import *
