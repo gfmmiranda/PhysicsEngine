@@ -26,8 +26,9 @@ class Listener:
         Corresponding time stamps.
     """
 
-    def __init__(self, pos: Union[float, List[float]]) -> None:
+    def __init__(self, pos: Union[float, List[float]], tag: str = 'mic') -> None:
         self.pos = np.atleast_1d(np.array(pos, dtype=float))
+        self.tag = tag
         self.grid_idx: Optional[Tuple[int, ...]] = None
         self.history: List[float] = []
         self.times: List[float] = []

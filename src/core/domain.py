@@ -262,7 +262,7 @@ class Domain2D(BaseDomain):
         self.mask = np.ones(tuple(self.N), dtype=bool)
         self.update_boundaries()
 
-    def set_material(self, mask_condition: np.ndarray, material_value: float) -> None:
+    def set_material(self, mask_condition: np.ndarray, material: float) -> None:
         """
         Set reflection coefficient for a region of the domain.
         
@@ -274,7 +274,7 @@ class Domain2D(BaseDomain):
             For Wave: Reflection coefficient R (0 = fully absorbing, 1 = fully reflective).
             For Heat: Convective Heat Transfer Coefficient h (0 = no advection (Neumann), 1 = full advection (Robin)).
         """
-        self.materials[mask_condition] = material_value
+        self.materials[mask_condition] = material
     
     def add_rectangular_obstacle(
         self, 
